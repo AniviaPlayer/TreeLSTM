@@ -23,6 +23,9 @@ class Node(object):
         if self.l_child is None : assert(self.r_child is None)
         return 2-[self.r_child,self.l_child].count(None)
 
+    def is_leaf(self):
+        return (self.get_num_child() == 0)
+
     def get_child(self):
         return self.l_child,self.r_child
 
@@ -40,7 +43,7 @@ class Tree(object):
             self.node_list[i].idx = i
 
         for i,word in enumerate(word_seq,1):
-            n = Node(word)
+            n = Node(word,i)
             self.node_list[i] = n
         for i,des in enumerate(description,1):
             if des == 0:
@@ -76,9 +79,6 @@ class Tree(object):
                 queue.append(node.r_child)
 
         self.traversal_list.reverse()
-
-    def is_leaf(self,node):
-        return node.get_num_child == 0
 
 def main():
     # word_seq = ["The","noodles","taste","great","*","but","the","service","is","bad","."]

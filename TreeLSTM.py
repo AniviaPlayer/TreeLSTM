@@ -6,17 +6,15 @@ Author: sunprinceS (TonyHsu)
 Email: sunprince12014@gmail.com
 Description: TreeLSTM
 """
-import numpy
+import numpy as np
 import theano
 import theano.tensor as T
 from theano.tensor.nnet import softmax,sigmoid,categorical_crossentropy
-from data_transformation import DataTransformation
-import io
+
 
 class TreeLSTM(object):
 
-    def __init__(self,mgr,rng,mem_dim,in_dim,inner_activation=sigmoid,outer_activation=T.tanh,param_file=None):
-        self.glove_map={}
+    def __init__(self,mgr,rng,mem_dim,in_dim,num_classes=3,inner_activation=sigmoid,outer_activation=T.tanh,param_file=None):
         """
         mgr
         rng : random state
@@ -24,6 +22,8 @@ class TreeLSTM(object):
         activation : non-linear function
         """
         self.mgr=mgr
+        self.mem_dim = mem_dim
+        self.in_dim = in_dim
         self.num_classes = num_classes
         self.inner_activation = inner_activation
         self.outer_activation = outer_activation
@@ -86,44 +86,43 @@ class TreeLSTM(object):
         self.composer_o = theano.function([hr,hl],
                 self.inner_activation(T.dot(self.Uo_R,hr) + T.dot(self.Uo_L,hl) + self.bo))
         self.composer_u = theano.function([hr,hl],
-                self.outer_activation(T.dot(self.Uu_R,hr) + T.dot(self.Ur_L,hl) + self.bu))
+                self.outer_activation(T.dot(self.Uu_R,hr) + T.dot(self.Uu_L,hl) + self.bu))
         self.leaf_i = theano.function([x],self.inner_activation(T.dot(self.Wi,x) + self.bi))
-        self.leaf_f = theano.function([x],self.nner_activation(T.dot(self.Wf,x) + self.bf))
-        self.leaf_o = theano.function([x],self.nner_activation(T.dot(self.Wo,x) + self.bo))
+        self.leaf_f = theano.function([x],self.inner_activation(T.dot(self.Wf,x) + self.bf))
+        self.leaf_o = theano.function([x],self.inner_activation(T.dot(self.Wo,x) + self.bo))
         self.leaf_u = theano.function([x],self.outer_activation(T.dot(self.Wu,x) + self.bu))
         self.combine_c = theano.function([cr,cl],cr + cl) # can define different method
-        self.softmax = theano([x],softmax(T.dot(self.Ws,x) + bs))
+        self.softmax = theano.function([x],softmax(T.dot(self.Ws,x) + self.bs))
 
-        def forward_pass(self,sentence,label):
-            """
-            Given sentence, forward pass
-            """
-            inpt_tree = self.mgr.get_tree(sentence)
-            golden = label
-            one_hot_golden = np.zeros(self.num_classes)
-            one_hot_golden[golden] = 1
-            stack = self.mgr.get_tree_stack(sentence)
-            node_hidden = [np.zeros(shape=self.mem_dim)] * len(stack)
-            node_c = [np.zeros(shape=self.mem_dim)] * len(stack)
-
-            #level-order traversal
-            for node in stack:
-                if inpt_tree.is_leaf(node):
-                    x = io.getGloveVec(node.word)
-                    node_c[node.idx] = self.leaf_i(x) * self.leaf_u(x)
-                    node_hidden[node.idx] = self.leaf_o(x) *self.outer_activation(node_c[node.idx])
-                else:
-                    child_r,child_l = inpt_tree.get_childs(node)
-                    node_c[i]=((self.composer_i(node_hidden[child_r.idx],node_hidden[child_l.idx])*
-                            self.composer_u(node_hidden[child_r.idx],node_hidden[child_l.idx]))+
-                            (self.composer_f(node_hidden[child_r.idx],node_hidden[chlid_l.idx]) *
-                            self.combine_c(node_c[chlid_r.idx],node_c[child_l.idx])))
-                    node_hidden[i]=(self.composer_o(node_hidden[child_r.idx],
-                                    node_hidden[chlid_l.idx])*self.outer_activation(node_c[i]))
-            #apply softmax
-            pred = self.softmax(node_hidden[inpt_tree.root.idx])
-            self.error = categorical_crossentropy(one_hot_golden,pred)
-            return self.error
+    def forward_pass(self,sentence,label):
+        """
+        Given sentence, forward pass
+        """
+        inpt_tree = self.mgr.get_tree(sentence)
+        golden = label
+        one_hot_golden = np.zeros(self.num_classes)
+        one_hot_golden[golden] = 1
+        stack = self.mgr.get_tree_stack(sentence)
+        node_hidden = [np.zeros(shape=self.mem_dim)] * len(stack)
+        node_c = [np.zeros(shape=self.mem_dim)] * len(stack)
+        #level-order traversal
+        for node in stack:
+            if node.is_leaf():
+                x = self.mgr.get_glove_vec(node.word)
+                node_c[node.idx] = self.leaf_i(x) * self.leaf_u(x)
+                node_hidden[node.idx] = self.leaf_o(x) *self.outer_activation(node_c[node.idx])
+            else:
+                child_r,child_l = node.get_child()
+                node_c[i]=((self.composer_i(node_hidden[child_r.idx],node_hidden[child_l.idx])*
+                        self.composer_u(node_hidden[child_r.idx],node_hidden[child_l.idx]))+
+                        (self.composer_f(node_hidden[child_r.idx],node_hidden[chlid_l.idx]) *
+                        self.combine_c(node_c[chlid_r.idx],node_c[child_l.idx])))
+                node_hidden[i]=(self.composer_o(node_hidden[child_r.idx],
+                                node_hidden[chlid_l.idx])*self.outer_activation(node_c[i]))
+        #apply softmax
+        pred = self.softmax(node_hidden[inpt_tree.root.idx])
+        self.error = categorical_crossentropy(one_hot_golden,pred)
+        return self.error
 
 if __name__ == "__main__":
     pass

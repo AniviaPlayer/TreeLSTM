@@ -6,10 +6,14 @@ Author: sunprinceS (TonyHsu)
 Email: sunprince12014@gmail.com
 Description: 
 """
+from util import *
 from Tree import Tree
+
 
 class TreeMgr(object):
     def __init__(self,sentence_file,descript_file):
+        self.vocab_dict = io.loadVocabDict()
+        self.glove_matrix = io.loadGloveVec()
         self.sentence_tree_map={}
         # sentence file and descript_file must be in the same order
         self.sentence_list=[]
@@ -36,6 +40,12 @@ class TreeMgr(object):
         # print(self.sentence_tree_map[sentence].node_list)
         return self.sentence_tree_map[sentence]
 
+    def get_glove_vec(self,word):
+        if word in self.vocab_dict:
+            return self.glove_matrix[self.vocab_dict[word]]
+        else:
+            return self.glove_matrix[-1]
+
     def sentence_iterator(self):
         for sentence in self.sentence_list:
             yield sentence
@@ -57,7 +67,8 @@ class TreeMgr(object):
         """
         return a node list
         """
-        return self.sentence_tree_map[sentence].traversal_list[1:]
+        # print(len(self.sentence_tree_map[sentence].traversal))
+        return self.sentence_tree_map[sentence].traversal_list
 
 
 def main():
