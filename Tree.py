@@ -10,22 +10,18 @@ from __future__ import print_function
 import sys
 
 class Node(object):
-    def __init__(self,word=""):
+    def __init__(self,word="",idx=None):
         self.word = word
         self.r_child = None
         self.l_child = None
+        self.idx= idx
+
     def __repr__(self):
         return self.word
 
     def get_num_child(self):
-        if self.l_child == None:
-            assert(self.r_child == None)
-            return 0
-        else:
-            if self.r_child == None:
-                return 1
-            else:
-                return 2
+        if self.l_child is None : assert(self.r_child is None)
+        return 2-[self.r_child,self.l_child].count(None)
 
     def get_child(self):
         return self.l_child,self.r_child
@@ -39,7 +35,9 @@ class Tree(object):
         """
         #node_list[0] is dummy
         self.traversal_list=[]
-        self.node_list = [Node() for i in range(len(description) + 1)]#shouldn't use []*10 (s copy)
+        self.node_list = [Node() for i in range(len(description) + 1)]#shouldn't use []*10(s copy)
+        for i in range(1,len(self.node_list)):
+            self.node_list[i].idx = i
 
         for i,word in enumerate(word_seq,1):
             n = Node(word)
@@ -49,20 +47,17 @@ class Tree(object):
                 self.root = self.node_list[i]
             else:
                 n_child = self.node_list[des].get_num_child()
-                if n_child == 1:#left child has been assigned!
+                if n_child == 1: #left child has been assigned!
                     self.node_list[des].r_child = self.node_list[i]
                     self.node_list[des].word += self.node_list[i].word
                 elif n_child == 0:
                     self.node_list[des].l_child = self.node_list[i]
                     self.node_list[des].word += (self.node_list[i].word + " ")
                 else:
-                    print(" i:{} des:{} went wrong (num_child:{})".format(i,des,n_child),file=sys.stderr)
+                    print(" i:{} des:{} went wrong".format(i,des),file=sys.stderr)
+        #Do level-order traversal
+        self.level_order_traversal()
 
-        # for node in self.node_list:
-            # print(node.get_num_child())
-    # def __init__(self,root):
-        # self.root = root
-        # self.traversal_list = []
 
     def level_order_traversal(self):
         if self.root is None:
@@ -82,20 +77,19 @@ class Tree(object):
 
         self.traversal_list.reverse()
 
+    def is_leaf(self,node):
+        return node.get_num_child == 0
+
 def main():
+    # word_seq = ["The","noodles","taste","great","*","but","the","service","is","bad","."]
+    # description=[12,12,18,18,14,15,19,19,21,21,17,13,14,15,16,17,0,13,20,16,20]
+    # tree1 = Tree(word_seq,description)
+    # print(tree1.traversal_list)
+    # for i in range(1,len(tree1.node_list)):
+        # print(tree1.node_list[i])
     word_seq = ["The","food","is","good","."]
     description=[6,6,8,8,9,7,0,9,7]
-    tree = Tree(word_seq,description)
-    for i in range(1,len(tree.node_list)):
-        print(tree.node_list[i])
-    # root = Node("Buy and Accorsi")
-    # tree = Tree(root)
-    # root.r_child = Node("Accorsi")
-    # root.l_child = Node("Buy and")
-    # root.l_child.r_child = Node("and")
-    # root.l_child.l_child = Node("Buy")
-
-    tree.level_order_traversal()
-    print(tree.traversal_list)
+    tree2 = Tree(word_seq,description)
+    print(tree2.node_list)
 if __name__ == "__main__":
     main()
