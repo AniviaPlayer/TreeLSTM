@@ -14,7 +14,7 @@ from theano.tensor.nnet import softmax,sigmoid,categorical_crossentropy
 
 class TreeLSTM(object):
 
-    def __init__(self,mgr,rng,mem_dim,in_dim,num_classes=3,inner_activation=sigmoid,outer_activation=sigmoid,param_file=None):
+    def __init__(self,mgr,rng,mem_dim,in_dim,param_file=None,num_classes=3,inner_activation=sigmoid,outer_activation=sigmoid):
         """
         mgr
         rng : random state
@@ -67,7 +67,7 @@ class TreeLSTM(object):
                 self.mem_dim,self.mem_dim)),dtype=theano.config.floatX),name="Uu_L",borrow=True)
         else:
             self.load_param(param_file)
-
+        self.lamda_const = 0.01
         self.params= [self.Wi,self.Wf,self.Wo,self.Wu,self.Ws,
                       self.bi,self.bf,self.bo,self.bu,self.bs,
                       self.Ui_R,self.Uf_R,self.Uo_R,self.Uu_R,
@@ -82,7 +82,13 @@ class TreeLSTM(object):
         golden = T.dmatrix('golden')
         c = T.dvector('c')
         p = T.dvector('p')
-
+        self.param_error = self.lamda_const *((self.Wi**2).sum() + (self.Wf**2).sum() + 
+                (self.Wo**2).sum() + (self.Wu**2).sum() + (self.Ws**2).sum() + 
+                (self.bi**2).sum() + (self.bf**2).sum() + (self.bo**2).sum() + 
+                (self.bu**2).sum() + (self.bs**2).sum() + (self.Ui_R**2).sum() + 
+                (self.Uf_R**2).sum() + (self.Uo_R**2).sum() + (self.Uu_R**2).sum() + 
+                (self.Ui_L**2).sum() + (self.Uf_L**2).sum() + (self.Uo_L**2).sum() + 
+                (self.Uu_L**2).sum())
         self.composer_i = theano.function([hr,hl],
                 self.inner_activation(T.dot(self.Ui_R,hr) + T.dot(self.Ui_L,hl) + self.bi))
         self.composer_f = theano.function([hr,hl],
@@ -106,7 +112,7 @@ class TreeLSTM(object):
         """
         inpt_tree = self.mgr.get_tree(sentence)
         golden = label
-        one_hot_golden = np.zeros(shape=(self.num_classes,1))
+        one_hot_golden = np.ones(shape=(self.num_classes,1))*1e-9
         one_hot_golden[golden] = 1
         stack = self.mgr.get_tree_stack(sentence)
         node_hidden = [np.zeros(shape=self.mem_dim)] * (len(stack) + 1)
@@ -137,10 +143,11 @@ class TreeLSTM(object):
                 # node_hidden[node.idx]=(self.composer_o(node_c[child_r.idx],node_c[child_l.idx]))
         #apply softmax
         pred = self.softmax(node_hidden[inpt_tree.root.idx])
+        # print("pred:{} \n golden:{}".format(pred,one_hot_golden))
         # pred = self.softmax(node_c[inpt_tree.root.idx])
-        self.error = categorical_crossentropy(one_hot_golden,pred)
+        self.error = categorical_crossentropy(one_hot_golden,pred) + self.param_error
         # print(self.error)
-        return self.error
+        return self.error,pred
 
 if __name__ == "__main__":
     pass
