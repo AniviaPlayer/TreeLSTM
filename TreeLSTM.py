@@ -120,14 +120,9 @@ class TreeLSTM(object):
         #level-order traversal
         for node in stack:
             if node.is_leaf():
-                # print(node.word)
                 x = self.mgr.get_glove_vec(node.word)
                 node_c[node.idx] = self.leaf_i(x) * self.leaf_u(x)
                 node_hidden[node.idx] = node_c[node.idx]*self.get_tanh(node_c[node.idx])
-                # node_hidden[node.idx] = self.leaf_o(x) * self.outer_activation(node_c[node.idx])
-                # node_hidden[node.idx] = self.leaf_o(node_c[node.idx])
-                # print(node_c[node.idx])
-                # print(node_hidden[node.idx])
             else:
                 child_l,child_r = node.get_child()
                 node_c[node.idx]=((self.composer_i(node_hidden[child_r.idx],node_hidden[child_l.idx])*
@@ -136,17 +131,9 @@ class TreeLSTM(object):
                         self.combine_c(node_c[child_r.idx],node_c[child_l.idx])))
                 node_hidden[node.idx]=(self.composer_o(node_hidden[child_r.idx],
                                 node_hidden[child_l.idx])*self.get_tanh(node_c[node.idx]))
-                # node_c[node.idx]=((self.composer_i(node_c[child_r.idx],node_c[child_l.idx])*
-                        # self.composer_u(node_c[child_r.idx],node_c[child_l.idx]))+
-                        # (self.composer_f(node_c[child_r.idx],node_c[child_l.idx]) *
-                        # self.combine_c(node_c[child_r.idx],node_c[child_l.idx])))
-                # node_hidden[node.idx]=(self.composer_o(node_c[child_r.idx],node_c[child_l.idx]))
         #apply softmax
         pred = self.softmax(node_hidden[inpt_tree.root.idx])
-        # print("pred:{} \n golden:{}".format(pred,one_hot_golden))
-        # pred = self.softmax(node_c[inpt_tree.root.idx])
         self.error = categorical_crossentropy(one_hot_golden,pred) + self.param_error
-        # print(self.error)
         return self.error,pred
 
 if __name__ == "__main__":
