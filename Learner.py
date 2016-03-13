@@ -8,6 +8,8 @@ Description:
 """
 import numpy as np
 from util import *
+import theano
+import theano.tensor as T
 from TreeMgr import TreeMgr
 from TreeLSTM import TreeLSTM
 
@@ -41,7 +43,7 @@ class Learner(object):
             print("Training Iteration {}:".format(i))
             print("======")
             for i ,sentence in enumerate(sentence_iterator):
-                cost += self.treelstm.forward_pass(sentence,self.label_list[i])
+                cost += self.treelstm.forward_pass(sentence,self.label_list[i]).sum()
                 if (i+1) % batch_size == 0:
                     gparams = [T.grad(cost,param) for param in self.treelstm.params]
                     updates = [(param,param - lr * gparam ) \
