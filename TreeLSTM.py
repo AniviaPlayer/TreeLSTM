@@ -7,147 +7,215 @@ Email: sunprince12014@gmail.com
 Description: TreeLSTM
 """
 import numpy as np
-import theano
-import theano.tensor as T
-from theano.tensor.nnet import softmax,sigmoid,categorical_crossentropy
+import pickle
 
+def sigmoid(x):
+    """
+    x: a numpy array
+    """
+    return 1 / (1 + np.exp(-x))
+
+def softmax(w):
+    """
+    w: a numpy array
+    """
+    e = np.exp(w)
+    return (e / np.sum(e))
+
+def cross_entropy(golden,pred):
+    """
+    golden: a numpy array (one hot)
+    pred: a numpy array
+    """
+    return -1.0 * (pred*np.log(golden)).sum()
 
 class TreeLSTM(object):
 
-    def __init__(self,mgr,rng,mem_dim,in_dim,param_file=None,num_classes=3,inner_activation=sigmoid,outer_activation=sigmoid):
+    def __init__(self,mgr,rng,mem_dim,in_dim,param_file=None,
+            num_classes=3,inner_activation=sigmoid,outer_activation=np.tanh,lamda=1e-3):
         """
-        mgr
+        mgr: TreeMgr
         rng : random state
-        param_file : param file
+        param_file : param file (json format)
         activation : non-linear function
         """
-        self.mgr=mgr
+        self.mgr = mgr
+        self.rng = rng
         self.mem_dim = mem_dim
         self.in_dim = in_dim
         self.num_classes = num_classes
         self.inner_activation = inner_activation
         self.outer_activation = outer_activation
-        ##Setting params in treeLSTM
-        if param_file == None:
-            self.bi = theano.shared(value=np.asarray(
-                rng.uniform(size=(self.mem_dim,)),dtype=theano.config.floatX),name="bi",borrow=True)
-            self.bf = theano.shared(value=np.asarray(
-                rng.uniform(size=(self.mem_dim,)),dtype=theano.config.floatX),name="bf",borrow=True)
-            self.bo = theano.shared(value=np.asarray(
-                rng.uniform(size=(self.mem_dim,)),dtype=theano.config.floatX),name="bo",borrow=True)
-            self.bu = theano.shared(value=np.asarray(
-                rng.uniform(size=(self.mem_dim,)),dtype=theano.config.floatX),name="bu",borrow=True)
-            self.bs = theano.shared(value=np.asarray(
-                rng.uniform(size=(self.num_classes,)),dtype=theano.config.floatX),name="bs",borrow=True)
-            self.Wi = theano.shared(value=np.asarray(
-                rng.uniform(size=(self.mem_dim,in_dim)),dtype=theano.config.floatX),name="Wi",borrow=True)
-            self.Wf = theano.shared(value=np.asarray(
-                rng.uniform(size=(self.mem_dim,in_dim)),dtype=theano.config.floatX),name="Wf",borrow=True)
-            self.Wo = theano.shared(value=np.asarray(
-                rng.uniform(size=(self.mem_dim,in_dim)),dtype=theano.config.floatX),name="Wo",borrow=True)
-            self.Wu = theano.shared(value=np.asarray(
-                rng.uniform(size=(self.mem_dim,in_dim)),dtype=theano.config.floatX),name="Wu",borrow=True)
-            self.Ws = theano.shared(value=np.asarray(rng.uniform(size=(
-                self.num_classes,self.mem_dim)),dtype=theano.config.floatX),name="Ws",borrow=True)
-            self.Ui_R = theano.shared(value=np.asarray(rng.uniform(size=(
-                self.mem_dim,self.mem_dim)),dtype=theano.config.floatX),name="Ui_R",borrow=True)
-            self.Ui_L = theano.shared(value=np.asarray(rng.uniform(size=(
-                self.mem_dim,self.mem_dim)),dtype=theano.config.floatX),name="Ui_L",borrow=True)
-            self.Uf_R = theano.shared(value=np.asarray(rng.uniform(size=(
-                self.mem_dim,self.mem_dim)),dtype=theano.config.floatX),name="Uf_R",borrow=True)
-            self.Uf_L = theano.shared(value=np.asarray(rng.uniform(size=(
-                self.mem_dim,self.mem_dim)),dtype=theano.config.floatX),name="Uf_L",borrow=True)
-            self.Uo_R = theano.shared(value=np.asarray(rng.uniform(size=(
-                self.mem_dim,self.mem_dim)),dtype=theano.config.floatX),name="Uo_R",borrow=True)
-            self.Uo_L = theano.shared(value=np.asarray(rng.uniform(size=(
-                self.mem_dim,self.mem_dim)),dtype=theano.config.floatX),name="Uo_L",borrow=True)
-            self.Uu_R = theano.shared(value=np.asarray(rng.uniform(size=(
-                self.mem_dim,self.mem_dim)),dtype=theano.config.floatX),name="Uu_R",borrow=True)
-            self.Uu_L = theano.shared(value=np.asarray(rng.uniform(size=(
-                self.mem_dim,self.mem_dim)),dtype=theano.config.floatX),name="Uu_L",borrow=True)
-        else:
-            self.load_param(param_file)
-        self.lamda_const = 0.01
-        self.params= [self.Wi,self.Wf,self.Wo,self.Wu,self.Ws,
-                      self.bi,self.bf,self.bo,self.bu,self.bs,
-                      self.Ui_R,self.Uf_R,self.Uo_R,self.Uu_R,
-                      self.Ui_L,self.Uf_L,self.Uo_L,self.Uu_L]
+        self.lamda = lamda
 
-        hl = T.dvector('hl')
-        hr = T.dvector('hr')
-        cr = T.dvector('cr')
-        cl = T.dvector('cl')
-        x = T.dvector('x')
-        pred = T.dmatrix('pred')
-        golden = T.dmatrix('golden')
-        c = T.dvector('c')
-        p = T.dvector('p')
-        self.param_error = self.lamda_const *((self.Wi**2).sum() + (self.Wf**2).sum() + 
-                (self.Wo**2).sum() + (self.Wu**2).sum() + (self.Ws**2).sum() + 
-                (self.bi**2).sum() + (self.bf**2).sum() + (self.bo**2).sum() + 
-                (self.bu**2).sum() + (self.bs**2).sum() + (self.Ui_R**2).sum() + 
-                (self.Uf_R**2).sum() + (self.Uo_R**2).sum() + (self.Uu_R**2).sum() + 
-                (self.Ui_L**2).sum() + (self.Uf_L**2).sum() + (self.Uo_L**2).sum() + 
-                (self.Uu_L**2).sum())
-        self.composer_i = theano.function([hr,hl],
-                self.inner_activation(T.dot(self.Ui_R,hr) + T.dot(self.Ui_L,hl) + self.bi))
-        self.composer_f = theano.function([hr,hl],
-                self.inner_activation(T.dot(self.Uf_R,hr) + T.dot(self.Uf_L,hl) + self.bf))
-        self.composer_o = theano.function([hr,hl],
-                self.inner_activation(T.dot(self.Uo_R,hr) + T.dot(self.Uo_L,hl) + self.bo))
-        self.composer_u = theano.function([hr,hl],
-                self.outer_activation(T.dot(self.Uu_R,hr) + T.dot(self.Uu_L,hl) + self.bu))
-        self.leaf_i = theano.function([x],self.inner_activation(T.dot(self.Wi,x) + self.bi))
-        self.leaf_f = theano.function([x],self.inner_activation(T.dot(self.Wf,x) + self.bf))
-        self.leaf_o = theano.function([x],self.inner_activation(T.dot(self.Wo,x) + self.bo))
-        self.leaf_u = theano.function([x],self.outer_activation(T.dot(self.Wu,x) + self.bu))
-        self.get_tanh = theano.function([c],self.outer_activation(c))
-        self.combine_c = theano.function([cr,cl],cr + cl) # can define different method
-        self.cost_func = theano.function([golden,pred],(pred * T.log(golden)).sum() * -1.0)
-        self.softmax = theano.function([p],T.transpose(softmax(T.dot(self.Ws,p) + self.bs)))
+        self.init_params()
+        if param_file is not None:
+            self.load_params(param_file)
+
+        print("Modle Initialization finish!")
+
+    def init_params(self):
+        self.bi = np.zeros(shape=(self.mem_dim,))
+        self.bf = np.zeros(shape=(self.mem_dim,))
+        self.bo = np.zeros(shape=(self.mem_dim,))
+        self.bu = np.zeros(shape=(self.mem_dim,))
+        self.bs = np.zeros(shape=(self.num_classes,))
+        self.Wi = self.rng.uniform(size=(self.mem_dim,self.in_dim)) * 0.5
+        self.Wo = self.rng.uniform(size=(self.mem_dim,self.in_dim)) * 0.5
+        self.Ws = self.rng.uniform(size=(self.num_classes,self.mem_dim)) * 0.01
+        self.Ui = self.rng.uniform(size=(self.mem_dim,self.mem_dim * 2)) * 0.05
+        self.Uf = self.rng.uniform(size=(self.mem_dim,self.mem_dim * 2)) * 0.05
+        self.Uo = self.rng.uniform(size=(self.mem_dim,self.mem_dim * 2)) * 0.05
+        self.Uu = self.rng.uniform(size=(self.mem_dim,self.mem_dim * 2)) * 0.01
+
+        self.params = [self.Wi,self.Wo,self.Ws,
+                      self.bi,self.bf,self.bo,self.bu,self.bs,
+                      self.Ui,self.Uf,self.Uo,self.Uu]
+        self.dWi = np.zeros(self.Wi.shape)
+        self.dWs = np.zeros(self.Ws.shape)
+        self.dWo = np.zeros(self.Wo.shape)
+        self.dbi = np.zeros(self.bi.shape)
+        self.dbf = np.zeros(self.bf.shape)
+        self.dbo = np.zeros(self.bo.shape)
+        self.dbu = np.zeros(self.bu.shape)
+        self.dbs = np.zeros(self.bs.shape)
+        self.dUi = np.zeros(self.Ui.shape)
+        self.dUf = np.zeros(self.Uf.shape)
+        self.dUo = np.zeros(self.Uo.shape)
+        self.dUu = np.zeros(self.Uu.shape)
+
+        self.grads = [self.dWi,self.dWo,self.dWs,
+                    self.dbi,self.dbf,self.dbo,self.dbu,self.dbs,
+                    self.dUi,self.dUf,self.dUo,self.dUu]
+    ##########
+    #  Gate  #
+    ##########
+    def composer_i(self,h):
+        return self.inner_activation(np.dot(self.Ui,h) + self.bi)
+
+    def composer_f(self,h):
+        return self.inner_activation(np.dot(self.Uf,h) + self.bf)
+
+    def composer_o(self,h):
+        return self.inner_activation(np.dot(self.Uo,h) + self.bo)
+
+    def composer_u(self,h):
+        return self.outer_activation(np.dot(self.Uu,h) + self.bu)
+
+    def leaf_i(self,x):
+        return self.inner_activation(np.dot(self.Wi,x) + self.bi)
+
+    def leaf_o(self,x):
+        return self.inner_activation(np.dot(self.Wo,x) + self.bo)
+
+    def combine_c(self,cr,cl):  #can define combine method
+        return cr + cl
+
+    def output_root(self,h):
+        return softmax(np.dot(self.Ws,h) + self.bs)
+
+    #########
+    #  I/O  #
+    #########
+    def load_params(self,param_file):
+        self.params = pickle.load(param_file)
+
+    def save_params(self,param_file):
+        pickle.dump(self.params)
+
 
     def forward_pass(self,sentence,label):
-        """
-        Given sentence, forward pass
-        """
         inpt_tree = self.mgr.get_tree(sentence)
         golden = label
         one_hot_golden = np.ones(shape=(self.num_classes,1))*1e-9
         one_hot_golden[golden] = 1
-        stack = self.mgr.get_tree_stack(sentence)
-        node_hidden = [np.zeros(shape=self.mem_dim)] * (len(stack) + 1)
-        node_c = [np.zeros(shape=self.mem_dim)] * ( len(stack) + 1)
-        #level-order traversal
-        for node in stack:
-            if node.is_leaf():
-                # print(node.word)
-                x = self.mgr.get_glove_vec(node.word)
-                node_c[node.idx] = self.leaf_i(x) * self.leaf_u(x)
-                node_hidden[node.idx] = node_c[node.idx]*self.get_tanh(node_c[node.idx])
-                # node_hidden[node.idx] = self.leaf_o(x) * self.outer_activation(node_c[node.idx])
-                # node_hidden[node.idx] = self.leaf_o(node_c[node.idx])
-                # print(node_c[node.idx])
-                # print(node_hidden[node.idx])
-            else:
-                child_l,child_r = node.get_child()
-                node_c[node.idx]=((self.composer_i(node_hidden[child_r.idx],node_hidden[child_l.idx])*
-                        self.composer_u(node_hidden[child_r.idx],node_hidden[child_l.idx]))+
-                        (self.composer_f(node_hidden[child_r.idx],node_hidden[child_l.idx]) *
-                        self.combine_c(node_c[child_r.idx],node_c[child_l.idx])))
-                node_hidden[node.idx]=(self.composer_o(node_hidden[child_r.idx],
-                                node_hidden[child_l.idx])*self.get_tanh(node_c[node.idx]))
-                # node_c[node.idx]=((self.composer_i(node_c[child_r.idx],node_c[child_l.idx])*
-                        # self.composer_u(node_c[child_r.idx],node_c[child_l.idx]))+
-                        # (self.composer_f(node_c[child_r.idx],node_c[child_l.idx]) *
-                        # self.combine_c(node_c[child_r.idx],node_c[child_l.idx])))
-                # node_hidden[node.idx]=(self.composer_o(node_c[child_r.idx],node_c[child_l.idx]))
-        #apply softmax
-        pred = self.softmax(node_hidden[inpt_tree.root.idx])
-        # print("pred:{} \n golden:{}".format(pred,one_hot_golden))
-        # pred = self.softmax(node_c[inpt_tree.root.idx])
-        self.error = categorical_crossentropy(one_hot_golden,pred) + self.param_error
-        # print(self.error)
-        return self.error,pred
+        cost = self.forward_pass_node(inpt_tree.root)
+        pred = self.output_root(inpt_tree.root.h)
+        cost  = cross_entropy(one_hot_golden,pred)
+        return np.argmax(pred),cost,pred
+
+    def forward_pass_node(self,node,test=False):
+        cost = 0.0
+        if node.is_leaf():
+            x = self.mgr.get_glove_vec(node.word)
+            node.c = self.leaf_i(x)
+            node.o = self.leaf_o(x)
+            node.h = node.o * self.outer_activation(node.c)
+        else:
+            cost_l = self.forward_pass_node(node.l_child,test)
+            cost_r = self.forward_pass_node(node.r_child,test)
+            cost += cost_l + cost_r
+            l_child,r_child = node.get_child()
+            children = np.hstack((l_child.h,r_child.h))
+            node.i = self.composer_i(children)
+            node.f = self.composer_f(children)
+            node.o = self.composer_o(children)
+            node.u = self.composer_u(children)
+            node.c = node.i * node.u + node.f * self.combine_c(l_child.c,r_child.c)
+            node.h = node.o * self.outer_activation(node.c)
+        return cost
+
+    def back_prop(self,pred,sentence,label):
+        inpt_tree = self.mgr.get_tree(sentence)
+        deltas = pred[int(label)] - 1.0
+        self.dWs += np.outer(deltas,inpt_tree.root.h)
+        self.dbs += deltas
+        self.back_prop_node(inpt_tree.root,deltas)
+
+    def back_prop_node(self,node,epsH,epsC=None):
+        epsO = epsH * self.outer_activation(node.c) * node.o * (1-node.o)
+        if epsC is None:
+            epsC  = epsH * node.o * (1-(self.outer_activation(node.c) ** 2))
+        else:
+            epsC += epsH * node.o * (1-(self.outer_activation(node.c) ** 2))
+
+        if node.is_leaf():
+            x = self.mgr.get_glove_vec(node.word)
+            self.dWo += np.outer(epsO,x)
+            self.dbo += epsO
+            self.dWi += np.outer(epsC,x)
+            self.dbi += epsC
+        else:
+            l_child,r_child = node.get_child()
+            childs_h = np.hstack((l_child.h,r_child.h))
+            self.dUo += np.outer(epsO,childs_h)
+            self.dbo += epsO
+
+
+            epsI = epsC * node.u * node.i * (1-node.i)
+            self.dbi += epsI
+            self.dUi += np.outer(epsI,childs_h)
+
+            epsU = epsC * node.i * (1-(self.outer_activation(node.u) ** 2))
+            self.dbu += epsU
+            self.dUu += np.outer(epsU,childs_h)
+
+            epsF = epsC * self.combine_c(l_child.c,r_child.c) * node.f * (1 - node.f)
+            self.dbf = epsF
+            self.dUf = np.outer(epsF,childs_h)
+
+            epsH = epsO.dot(self.Uo) + epsI.dot(self.Ui) + epsU.dot(self.Uu) + epsF.dot(self.Uf)
+            epsC *= node.f
+            self.back_prop_node(l_child,epsH[:self.mem_dim],epsC)
+            self.back_prop_node(r_child,epsH[self.mem_dim:],epsC)
+
+    def update(self):
+        self.params = [P + 1e-2 * dP for P,dP in zip(self.params,self.grads)]
+        self.resetgrads()
+
+    def resetgrads(self):
+        self.dWi = np.zeros(self.Wi.shape)
+        self.dWs = np.zeros(self.Ws.shape)
+        self.dWo = np.zeros(self.Wo.shape)
+        self.dbi = np.zeros(self.bi.shape)
+        self.dbf = np.zeros(self.bf.shape)
+        self.dbo = np.zeros(self.bo.shape)
+        self.dbu = np.zeros(self.bu.shape)
+        self.dbs = np.zeros(self.bs.shape)
+        self.dUi = np.zeros(self.Ui.shape)
+        self.dUf = np.zeros(self.Uf.shape)
+        self.dUo = np.zeros(self.Uo.shape)
+        self.dUu = np.zeros(self.Uu.shape)
 
 if __name__ == "__main__":
     pass

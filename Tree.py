@@ -45,6 +45,7 @@ class Tree(object):
         for i,word in enumerate(word_seq,1):
             n = Node(word,i)
             self.node_list[i] = n
+
         for i,des in enumerate(description,1):
             if des == 0:
                 self.root = self.node_list[i]
